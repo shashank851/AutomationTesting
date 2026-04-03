@@ -1,0 +1,10 @@
+# Auth session — contains sensitive cookies, never commit
+auth_state.json
+
+# Generated test result files
+Results_*.xlsx
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
