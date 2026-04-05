@@ -1,176 +1,156 @@
 {% extends "base.html" %}
-{% block title %}Run {{ run.id }} — UI Test Platform{% endblock %}
+{% block title %}Run — UI Test Platform{% endblock %}
 
 {% block content %}
-<div x-data="runDetail('{{ run.id }}', '{{ run.status }}')" x-init="init()">
+<!-- Only pass run_id via data attribute — no Jinja inside JS strings -->
+<div x-data="runDetail()" x-init="init()" data-run-id="{{ run.id }}">
 
   <!-- Header -->
   <div class="flex items-start justify-between mb-6">
     <div>
       <a href="/" class="text-sm text-gray-500 hover:text-indigo-600">← All Runs</a>
-      <h1 class="text-xl font-bold mt-1" x-text="'Run: ' + runData.input_filename"></h1>
-      <p class="text-sm text-gray-500 mt-0.5" x-text="runData.target_url"></p>
+      <h1 class="text-xl font-bold mt-1" x-text="run.input_filename ? 'Run: ' + run.input_filename : 'Loading…'"></h1>
+      <p class="text-sm text-gray-500 mt-0.5" x-text="run.target_url || ''"></p>
     </div>
     <div class="text-right">
       <span
         class="inline-block text-sm font-semibold px-3 py-1 rounded-full"
-        :class="statusClass(runData.status)"
-        x-text="runData.status"
+        :class="statusClass(run.status)"
+        x-text="run.status || '…'"
       ></span>
-      <template x-if="runData.duration_seconds != null">
-        <p class="text-xs text-gray-400 mt-1" x-text="runData.duration_seconds.toFixed(1) + 's'"></p>
+      <template x-if="run.duration_seconds != null">
+        <p class="text-xs text-gray-400 mt-1" x-text="run.duration_seconds.toFixed(1) + 's'"></p>
       </template>
     </div>
   </div>
 
-  <!-- Auth setup wizard (shown when run is waiting for login) -->
-  <template x-if="runData.status === 'pending_auth' && !runData.auth_state_path">
+  <!-- Live auth browser panel -->
+  <template x-if="run.status === 'pending_auth'">
     <div class="bg-white border border-amber-200 rounded-xl shadow-sm mb-6 overflow-hidden">
+
       <!-- Header -->
-      <div class="bg-amber-50 border-b border-amber-200 px-6 py-4 flex items-center gap-3">
-        <div class="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 font-bold text-sm flex-shrink-0">!</div>
-        <div>
-          <p class="font-semibold text-amber-900">Authentication Required</p>
-          <p class="text-sm text-amber-700">This run needs a login session before it can start. Follow the 3 steps below.</p>
-        </div>
-      </div>
-
-      <div class="px-6 py-5 space-y-5">
-
-        <!-- Step 1 -->
-        <div class="flex gap-4">
-          <div class="w-7 h-7 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">1</div>
+      <div class="bg-amber-50 border-b border-amber-200 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 font-bold text-sm flex-shrink-0">!</div>
           <div>
-            <p class="font-medium text-gray-800 text-sm">Download the login setup script</p>
-            <p class="text-xs text-gray-500 mt-0.5 mb-2">A Python script pre-configured for <span class="font-mono" x-text="runData.target_url"></span></p>
-            <a
-              :href="'/api/v1/runs/' + runData.id + '/auth-setup-script'"
-              download
-              class="inline-flex items-center gap-1.5 bg-indigo-600 text-white text-xs font-medium rounded px-3 py-1.5 hover:bg-indigo-700"
-            >
-              ⬇ Download setup_auth.py
-            </a>
+            <p class="font-semibold text-amber-900">Authentication Required</p>
+            <p class="text-sm text-amber-700">Log in to the site below, then click <strong>I'm logged in — Done</strong>.</p>
           </div>
         </div>
-
-        <!-- Step 2 -->
-        <div class="flex gap-4">
-          <div class="w-7 h-7 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">2</div>
-          <div>
-            <p class="font-medium text-gray-800 text-sm">Run the script on your local machine</p>
-            <p class="text-xs text-gray-500 mt-1 mb-2">Open a terminal, install Playwright if needed, then run:</p>
-            <div class="bg-gray-900 text-green-400 text-xs font-mono rounded-lg px-4 py-3 space-y-1">
-              <div># One-time setup (if not already installed)</div>
-              <div>pip install playwright &amp;&amp; playwright install chromium</div>
-              <div class="mt-2"># Run the auth setup</div>
-              <div>python setup_auth_<span x-text="runData.id"></span>.py</div>
-            </div>
-            <p class="text-xs text-gray-500 mt-2">A browser window will open → log in → close the browser → <code class="bg-gray-100 px-1 rounded">auth_state.json</code> is saved.</p>
-          </div>
-        </div>
-
-        <!-- Step 3 -->
-        <div class="flex gap-4">
-          <div class="w-7 h-7 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">3</div>
-          <div class="w-full">
-            <p class="font-medium text-gray-800 text-sm">Upload the saved <code class="bg-gray-100 px-1 rounded text-xs">auth_state.json</code></p>
-            <p class="text-xs text-gray-500 mt-0.5 mb-3">The run will start automatically once uploaded.</p>
-
-            <!-- Drop zone -->
-            <div
-              class="border-2 border-dashed rounded-lg p-5 text-center transition-colors"
-              :class="dragOver ? 'border-indigo-400 bg-indigo-50' : 'border-gray-300 bg-gray-50'"
-              @dragover.prevent="dragOver = true"
-              @dragleave="dragOver = false"
-              @drop.prevent="dragOver = false; authFile = $event.dataTransfer.files[0]"
-            >
-              <template x-if="!authFile">
-                <div>
-                  <p class="text-sm text-gray-500">Drag &amp; drop <code class="bg-white border rounded px-1 text-xs">auth_state.json</code> here, or</p>
-                  <label class="mt-2 inline-block cursor-pointer">
-                    <span class="text-indigo-600 text-sm font-medium hover:underline">browse to select file</span>
-                    <input type="file" accept=".json" class="hidden" @change="authFile = $event.target.files[0]" />
-                  </label>
-                </div>
-              </template>
-              <template x-if="authFile">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2 text-sm text-gray-700">
-                    <span class="text-green-500">✓</span>
-                    <span x-text="authFile.name"></span>
-                    <span class="text-xs text-gray-400" x-text="'(' + (authFile.size / 1024).toFixed(1) + ' KB)'"></span>
-                  </div>
-                  <button @click="authFile = null" class="text-xs text-gray-400 hover:text-red-500">✕ Remove</button>
-                </div>
-              </template>
-            </div>
-
-            <button
-              @click="uploadAuthState()"
-              :disabled="!authFile || uploadingAuth"
-              class="mt-3 w-full bg-green-600 text-white text-sm font-medium rounded-lg py-2.5 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              <span x-show="!uploadingAuth">Upload &amp; Start Run →</span>
-              <span x-show="uploadingAuth">Uploading…</span>
+        <div class="flex items-center gap-3">
+          <template x-if="!authBrowserStarted">
+            <button @click="startAuthBrowser()"
+                    :disabled="authBrowserLoading"
+                    class="bg-indigo-600 text-white text-sm font-medium rounded px-4 py-2 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed">
+              <span x-show="!authBrowserLoading">Open Login Browser</span>
+              <span x-show="authBrowserLoading">Starting…</span>
             </button>
-            <p x-show="authError" x-text="authError" class="text-xs text-red-600 mt-2"></p>
-          </div>
+          </template>
+          <template x-if="authBrowserStarted">
+            <button @click="completeAuth()"
+                    :disabled="authCompleting"
+                    class="bg-green-600 text-white text-sm font-medium rounded px-4 py-2 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed">
+              <span x-show="!authCompleting">I'm logged in — Done</span>
+              <span x-show="authCompleting">Saving session…</span>
+            </button>
+          </template>
         </div>
-
       </div>
+
+      <!-- Status / error bar -->
+      <div x-show="authStatusMsg" class="px-6 py-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-700" x-text="authStatusMsg"></div>
+      <div x-show="authError" class="px-6 py-2 bg-red-50 border-b border-red-100 text-xs text-red-700" x-text="authError"></div>
+
+      <!-- Browser viewport -->
+      <template x-if="authBrowserStarted">
+        <div class="relative select-none" style="cursor:crosshair">
+          <!-- Screenshot image — sized to match viewport (1280x800 scaled to container) -->
+          <img
+            id="auth-screenshot"
+            :src="authScreenshot ? 'data:image/jpeg;base64,' + authScreenshot : ''"
+            class="w-full block"
+            style="image-rendering:auto"
+            @click="handleAuthClick($event)"
+          />
+          <!-- Invisible overlay for interaction — keeps position relative to img -->
+          <div
+            class="absolute inset-0"
+            @click="handleAuthClick($event)"
+            @keydown.window="handleAuthKey($event)"
+          ></div>
+          <!-- URL bar -->
+          <div x-show="authCurrentUrl" class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs px-3 py-1 truncate" x-text="authCurrentUrl"></div>
+        </div>
+      </template>
+
+      <!-- Keyboard input strip (shown while browser is live) -->
+      <template x-if="authBrowserStarted">
+        <div class="px-4 py-3 border-t border-gray-100 flex gap-2 items-center">
+          <input
+            id="auth-type-input"
+            type="text"
+            placeholder="Type text and press Enter to send to browser…"
+            class="flex-1 text-sm border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            @keydown.enter.prevent="sendAuthType($event.target.value); $event.target.value = ''"
+          />
+          <button
+            class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1.5"
+            @click="sendAuthKey('Tab')">Tab</button>
+          <button
+            class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1.5"
+            @click="sendAuthKey('Enter')">Enter</button>
+        </div>
+      </template>
+
     </div>
   </template>
 
   <!-- Progress bar -->
-  <template x-if="runData.total_tests">
+  <template x-if="run.total_tests">
     <div class="mb-6">
       <div class="flex justify-between text-xs text-gray-500 mb-1">
-        <span x-text="completedCount + ' / ' + runData.total_tests + ' tests'"></span>
+        <span x-text="completedCount + ' / ' + run.total_tests + ' tests'"></span>
         <span x-text="progressPct + '%'"></span>
       </div>
       <div class="w-full bg-gray-200 rounded-full h-2">
-        <div
-          class="h-2 rounded-full transition-all duration-300"
-          :class="runData.status === 'failed' ? 'bg-red-500' : 'bg-indigo-500'"
-          :style="'width:' + progressPct + '%'"
-        ></div>
+        <div class="h-2 rounded-full transition-all duration-300"
+             :class="run.status === 'failed' ? 'bg-red-500' : 'bg-indigo-500'"
+             :style="'width:' + progressPct + '%'"></div>
       </div>
     </div>
   </template>
 
   <!-- Status pills -->
-  <div class="flex gap-4 mb-6 text-sm">
+  <div class="flex gap-4 mb-4 text-sm">
     <div class="flex items-center gap-1">
       <span class="w-3 h-3 rounded-full bg-green-400 inline-block"></span>
-      <span x-text="'PASS ' + runData.passed_count"></span>
+      <span x-text="'PASS ' + (run.passed_count || 0)"></span>
     </div>
     <div class="flex items-center gap-1">
       <span class="w-3 h-3 rounded-full bg-red-400 inline-block"></span>
-      <span x-text="'FAIL ' + runData.failed_count"></span>
+      <span x-text="'FAIL ' + (run.failed_count || 0)"></span>
     </div>
     <div class="flex items-center gap-1">
       <span class="w-3 h-3 rounded-full bg-yellow-400 inline-block"></span>
-      <span x-text="'MANUAL ' + runData.manual_count"></span>
+      <span x-text="'MANUAL ' + (run.manual_count || 0)"></span>
     </div>
     <div class="flex items-center gap-1">
       <span class="w-3 h-3 rounded-full bg-gray-300 inline-block"></span>
-      <span x-text="'SKIP ' + runData.skipped_count"></span>
+      <span x-text="'SKIP ' + (run.skipped_count || 0)"></span>
     </div>
   </div>
 
   <!-- Download button -->
-  <template x-if="runData.status === 'completed'">
-    <a
-      :href="'/api/v1/runs/' + runData.id + '/download'"
-      class="inline-block mb-6 bg-green-600 text-white text-sm rounded px-4 py-2 hover:bg-green-700"
-    >
-      Download Results (.xlsx)
+  <template x-if="run.status === 'completed'">
+    <a :href="'/api/v1/runs/' + runId + '/download'"
+       class="inline-block mb-6 bg-green-600 text-white text-sm font-medium rounded px-4 py-2 hover:bg-green-700">
+      ⬇ Download Results (.xlsx)
     </a>
   </template>
 
-  <!-- Error message -->
-  <template x-if="runData.error_message">
-    <div class="bg-red-50 border border-red-200 rounded p-3 mb-6 text-sm text-red-700" x-text="runData.error_message"></div>
+  <!-- Error -->
+  <template x-if="run.error_message">
+    <div class="bg-red-50 border border-red-200 rounded p-3 mb-6 text-sm text-red-700" x-text="run.error_message"></div>
   </template>
 
   <!-- Results table -->
@@ -178,30 +158,30 @@
     <table class="w-full text-sm">
       <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
         <tr>
-          <th class="px-4 py-2 text-left w-20">ID</th>
+          <th class="px-4 py-2 text-left w-24">ID</th>
           <th class="px-4 py-2 text-left">Title</th>
-          <th class="px-4 py-2 text-left w-24">Status</th>
+          <th class="px-4 py-2 text-left w-28">Status</th>
           <th class="px-4 py-2 text-left">Actual Result</th>
         </tr>
       </thead>
       <tbody>
+        <template x-if="results.length === 0 && run.status !== 'running'">
+          <tr>
+            <td colspan="4" class="px-4 py-6 text-center text-gray-400 text-sm">No results yet.</td>
+          </tr>
+        </template>
         <template x-for="r in results" :key="r.test_case_id">
           <tr class="border-t border-gray-100 hover:bg-gray-50">
             <td class="px-4 py-2 font-mono text-xs text-gray-600" x-text="r.test_case_id"></td>
-            <td class="px-4 py-2 text-gray-700" x-text="r.title || '—'"></td>
+            <td class="px-4 py-2 text-gray-700 text-xs" x-text="r.title || '—'"></td>
             <td class="px-4 py-2">
-              <span
-                class="inline-block text-xs font-semibold px-2 py-0.5 rounded-full"
-                :class="resultClass(r.status)"
-                x-text="r.status"
-              ></span>
+              <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded-full"
+                    :class="resultClass(r.status)"
+                    x-text="r.status"></span>
             </td>
-            <td class="px-4 py-2 text-xs text-gray-500 max-w-xs truncate" x-text="r.actual_result || '—'" :title="r.actual_result"></td>
-          </tr>
-        </template>
-        <template x-if="results.length === 0">
-          <tr>
-            <td colspan="4" class="px-4 py-6 text-center text-gray-400 text-sm">No results yet.</td>
+            <td class="px-4 py-2 text-xs text-gray-500 max-w-xs truncate"
+                x-text="r.actual_result || '—'"
+                :title="r.actual_result"></td>
           </tr>
         </template>
       </tbody>
@@ -211,163 +191,274 @@
 </div>
 
 <script>
-function runDetail(runId, initialStatus) {
+function runDetail() {
   return {
-    runId,
-    runData: {
-      id: runId,
-      status: initialStatus,
-      input_filename: '{{ run.input_filename }}',
-      target_url: '{{ run.target_url }}',
-      requires_auth: {{ 'true' if run.requires_auth else 'false' }},
-      auth_state_path: {{ '"' + run.auth_state_path + '"' if run.auth_state_path else 'null' }},
-      total_tests: {{ run.total_tests or 'null' }},
-      passed_count: {{ run.passed_count }},
-      failed_count: {{ run.failed_count }},
-      manual_count: {{ run.manual_count }},
-      skipped_count: {{ run.skipped_count }},
-      duration_seconds: {{ run.duration_seconds or 'null' }},
-      error_message: {{ '"' + run.error_message + '"' if run.error_message else 'null' }},
-    },
+    // runId read from data attribute — no Jinja inside JS
+    runId: document.querySelector('[data-run-id]').dataset.runId,
+    run: { status: 'loading', passed_count: 0, failed_count: 0, manual_count: 0, skipped_count: 0 },
     results: [],
-    authFile: null,
-    dragOver: false,
-    uploadingAuth: false,
-    authError: '',
     evtSource: null,
 
+    // ── Auth browser state ───────────────────────────────────────────────────
+    authBrowserStarted:  false,
+    authBrowserLoading:  false,
+    authScreenshot:      null,   // base64 JPEG
+    authCurrentUrl:      '',
+    authStatusMsg:       '',
+    authError:           '',
+    authCompleting:      false,
+    authEvtSource:       null,
+
+    // ── Computed ─────────────────────────────────────────────────────────────
+
     get completedCount() {
-      return (this.runData.passed_count || 0)
-           + (this.runData.failed_count || 0)
-           + (this.runData.manual_count || 0)
-           + (this.runData.skipped_count || 0);
+      return (this.run.passed_count  || 0)
+           + (this.run.failed_count  || 0)
+           + (this.run.manual_count  || 0)
+           + (this.run.skipped_count || 0);
     },
 
     get progressPct() {
-      if (!this.runData.total_tests) return 0;
-      return Math.min(100, Math.round((this.completedCount / this.runData.total_tests) * 100));
+      if (!this.run.total_tests) return 0;
+      return Math.min(100, Math.round((this.completedCount / this.run.total_tests) * 100));
     },
 
+    // ── Init ──────────────────────────────────────────────────────────────────
+
     async init() {
+      await this.loadRunData();
       await this.loadResults();
 
       const terminal = ['completed', 'failed', 'timed_out', 'cancelled'];
-      const waiting  = ['pending_auth'];
-      if (!terminal.includes(this.runData.status) && !waiting.includes(this.runData.status)) {
+      const waiting  = ['pending_auth', 'loading'];
+      if (!terminal.includes(this.run.status) && !waiting.includes(this.run.status)) {
         this.connectSSE();
       }
     },
 
     async loadRunData() {
       try {
-        const res = await fetch(`/api/v1/runs/${this.runId}`);
-        if (res.ok) {
-          const run = await res.json();
-          Object.assign(this.runData, run);
-        }
-      } catch {}
+        const res = await fetch('/api/v1/runs/' + this.runId);
+        if (res.ok) this.run = await res.json();
+      } catch (e) {
+        console.error('Failed to load run data', e);
+      }
     },
 
     async loadResults() {
       try {
-        const res = await fetch(`/api/v1/runs/${this.runId}/results`);
+        const res = await fetch('/api/v1/runs/' + this.runId + '/results');
         if (res.ok) this.results = await res.json();
-      } catch {}
+      } catch (e) {
+        console.error('Failed to load results', e);
+      }
     },
 
-    connectSSE() {
-      this.evtSource = new EventSource(`/api/v1/runs/${this.runId}/stream`);
+    // ── Test-run SSE ──────────────────────────────────────────────────────────
 
-      this.evtSource.onmessage = (e) => {
+    connectSSE() {
+      if (this.evtSource) this.evtSource.close();
+      this.evtSource = new EventSource('/api/v1/runs/' + this.runId + '/stream');
+
+      this.evtSource.onmessage = async (e) => {
         try {
           const msg = JSON.parse(e.data);
+
           if (msg.event_type === 'status_change') {
-            Object.assign(this.runData, msg.payload);
-            const terminal = ['completed', 'failed', 'timed_out', 'cancelled'];
+            Object.assign(this.run, msg.payload);
             if (msg.payload.status === 'running') {
-              await this.loadRunData();  // pick up total_tests + timestamps from DB
+              await this.loadRunData();
             }
+            const terminal = ['completed', 'failed', 'timed_out', 'cancelled'];
             if (terminal.includes(msg.payload.status)) {
               this.evtSource.close();
               await this.loadRunData();
-              this.loadResults();
+              await this.loadResults();
             }
           } else if (msg.event_type === 'test_completed') {
             const p = msg.payload;
             const idx = this.results.findIndex(r => r.test_case_id === p.test_case_id);
             const entry = {
-              test_case_id: p.test_case_id,
-              title: p.title || null,
-              status: p.status,
+              test_case_id:  p.test_case_id,
+              title:         p.title || null,
+              status:        p.status,
               actual_result: p.actual,
-              comments: p.comment,
+              comments:      p.comment,
             };
             if (idx >= 0) {
               this.results[idx] = entry;
             } else {
               this.results.push(entry);
             }
-            // Update counters
-            const s = p.status;
-            if (s === 'PASS')   this.runData.passed_count++;
-            else if (s === 'FAIL')   this.runData.failed_count++;
-            else if (s === 'MANUAL') this.runData.manual_count++;
-            else if (s === 'SKIP')   this.runData.skipped_count++;
+            if      (p.status === 'PASS')   this.run.passed_count++;
+            else if (p.status === 'FAIL')   this.run.failed_count++;
+            else if (p.status === 'MANUAL') this.run.manual_count++;
+            else if (p.status === 'SKIP')   this.run.skipped_count++;
           }
-        } catch {}
+        } catch (err) {
+          console.error('SSE parse error', err);
+        }
       };
 
-      this.evtSource.onerror = () => {
-        this.evtSource.close();
-      };
+      this.evtSource.onerror = () => this.evtSource.close();
     },
 
-    async uploadAuthState() {
-      if (!this.authFile) return;
-      this.uploadingAuth = true;
+    // ── Auth browser ──────────────────────────────────────────────────────────
+
+    async startAuthBrowser() {
+      this.authBrowserLoading = true;
       this.authError = '';
+      this.authStatusMsg = '';
       try {
-        const fd = new FormData();
-        fd.append('file', this.authFile);
-        const res = await fetch(`/api/v1/runs/${this.runId}/auth-state`, {
-          method: 'POST', body: fd
-        });
+        const res = await fetch('/api/v1/runs/' + this.runId + '/auth-session', { method: 'POST' });
         if (!res.ok) {
           const d = await res.json();
-          this.authError = d.detail || 'Upload failed.';
-        } else {
-          // Auth uploaded — refresh run data from DB then connect SSE
-          await this.loadRunData();
-          this.connectSSE();
+          this.authError = d.detail || 'Could not start auth browser.';
+          return;
         }
+        this.authBrowserStarted = true;
+        this.authStatusMsg = 'Browser starting… waiting for first screenshot.';
+        this.connectAuthSSE();
       } catch {
-        this.authError = 'Network error.';
+        this.authError = 'Network error starting auth browser.';
       } finally {
-        this.uploadingAuth = false;
+        this.authBrowserLoading = false;
       }
     },
 
-    statusClass(s) {
-      const map = {
-        pending_auth: 'bg-amber-100 text-amber-700',
-        pending:   'bg-gray-100 text-gray-700',
-        running:   'bg-blue-100 text-blue-700',
-        completed: 'bg-green-100 text-green-700',
-        failed:    'bg-red-100 text-red-700',
-        timed_out: 'bg-orange-100 text-orange-700',
-        cancelled: 'bg-gray-100 text-gray-500',
+    connectAuthSSE() {
+      if (this.authEvtSource) this.authEvtSource.close();
+      this.authEvtSource = new EventSource('/api/v1/runs/' + this.runId + '/auth-session/stream');
+
+      this.authEvtSource.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          const et  = msg.event_type;
+          const p   = msg.payload || {};
+
+          if (et === 'browser_ready') {
+            this.authStatusMsg = 'Browser ready — log in, then click "I\'m logged in — Done".';
+            this.authCurrentUrl = p.url || '';
+          } else if (et === 'screenshot') {
+            this.authScreenshot = p.image;
+            this.authCurrentUrl = p.url || this.authCurrentUrl;
+            if (this.authStatusMsg.startsWith('Browser starting')) {
+              this.authStatusMsg = 'Browser live — interact below, then click Done when logged in.';
+            }
+          } else if (et === 'auth_complete') {
+            this.authStatusMsg = 'Login saved! Queuing test run…';
+            this.authEvtSource.close();
+          } else if (et === 'auth_timeout') {
+            this.authError = 'Session timed out after 5 minutes. Reload to try again.';
+            this.authEvtSource.close();
+          } else if (et === 'auth_error') {
+            this.authError = p.message || 'Auth browser error.';
+            this.authEvtSource.close();
+          }
+        } catch (err) {
+          console.error('Auth SSE parse error', err);
+        }
       };
-      return map[s] || 'bg-gray-100 text-gray-600';
+
+      this.authEvtSource.onerror = () => {
+        // Don't show error if we completed normally
+        if (!this.authStatusMsg.includes('Queuing')) {
+          this.authError = 'Auth stream disconnected.';
+        }
+        this.authEvtSource.close();
+      };
+    },
+
+    // Click on the screenshot → scale coordinates to 1280x800 and send to backend
+    async handleAuthClick(event) {
+      const img = document.getElementById('auth-screenshot');
+      if (!img) return;
+      const rect = img.getBoundingClientRect();
+      const scaleX = 1280 / rect.width;
+      const scaleY = 800  / rect.height;
+      const x = (event.clientX - rect.left) * scaleX;
+      const y = (event.clientY - rect.top)  * scaleY;
+      await this._authInteract({ type: 'click', x, y });
+    },
+
+    // Key events from the global keydown listener on the overlay
+    async handleAuthKey(event) {
+      // Only forward when focus is NOT on the text input strip
+      const active = document.activeElement;
+      if (active && active.id === 'auth-type-input') return;
+
+      const special = ['Enter','Tab','Backspace','Delete','Escape',
+                       'ArrowUp','ArrowDown','ArrowLeft','ArrowRight'];
+      if (special.includes(event.key)) {
+        event.preventDefault();
+        await this._authInteract({ type: 'key', key: event.key });
+      }
+    },
+
+    async sendAuthType(text) {
+      if (!text) return;
+      await this._authInteract({ type: 'type', text });
+    },
+
+    async sendAuthKey(key) {
+      await this._authInteract({ type: 'key', key });
+    },
+
+    async _authInteract(payload) {
+      try {
+        await fetch('/api/v1/runs/' + this.runId + '/auth-session/interact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch {
+        // ignore transient errors
+      }
+    },
+
+    async completeAuth() {
+      this.authCompleting = true;
+      this.authError = '';
+      try {
+        const res = await fetch('/api/v1/runs/' + this.runId + '/auth-session/complete', {
+          method: 'POST',
+        });
+        if (!res.ok) {
+          const d = await res.json();
+          this.authError = d.detail || 'Failed to complete auth.';
+          return;
+        }
+        // Run is now queued — connect the normal SSE to track progress
+        await this.loadRunData();
+        this.connectSSE();
+      } catch {
+        this.authError = 'Network error.';
+      } finally {
+        this.authCompleting = false;
+      }
+    },
+
+    // ── Status helpers ────────────────────────────────────────────────────────
+
+    statusClass(s) {
+      return {
+        pending_auth: 'bg-amber-100 text-amber-700',
+        pending:      'bg-gray-100 text-gray-700',
+        running:      'bg-blue-100 text-blue-700',
+        completed:    'bg-green-100 text-green-700',
+        failed:       'bg-red-100 text-red-700',
+        timed_out:    'bg-orange-100 text-orange-700',
+        cancelled:    'bg-gray-100 text-gray-500',
+      }[s] || 'bg-gray-100 text-gray-600';
     },
 
     resultClass(s) {
-      const map = {
+      return {
         PASS:   'bg-green-100 text-green-700',
         FAIL:   'bg-red-100 text-red-700',
         MANUAL: 'bg-yellow-100 text-yellow-700',
         SKIP:   'bg-gray-100 text-gray-500',
-      };
-      return map[s] || 'bg-gray-100 text-gray-600';
+      }[s] || 'bg-gray-100 text-gray-600';
     },
   };
 }
