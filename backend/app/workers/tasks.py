@@ -157,10 +157,12 @@ def execute_test_run(self: Task, run_id: str) -> Dict[str, Any]:
                 status  = payload["status"]
                 actual  = payload.get("actual", "")
                 comment = payload.get("comment", "")
+                title   = payload.get("title") or None
 
                 _upsert_result(
                     db, run_id,
                     test_case_id=tid,
+                    title=title,
                     status=status,
                     actual=actual,
                     comment=comment,

@@ -103,6 +103,7 @@ class TestRunExecutor:
                     r = self.results[tid]
                     self._emit("test_completed", {
                         "test_case_id": tid,
+                        "title":        tc.get("title") or "",
                         "status":       r["status"],
                         "actual":       r["actual"],
                         "comment":      r["comment"],
@@ -115,6 +116,7 @@ class TestRunExecutor:
                 }
                 self._emit("test_completed", {
                     "test_case_id": tid,
+                    "title":        tc.get("title") or "",
                     "status": "FAIL",
                     "actual": self.results[tid]["actual"],
                     "comment": "",
@@ -127,6 +129,7 @@ class TestRunExecutor:
                 }
                 self._emit("test_completed", {
                     "test_case_id": tid,
+                    "title":        tc.get("title") or "",
                     "status": "FAIL",
                     "actual": self.results[tid]["actual"],
                     "comment": "",
@@ -160,6 +163,7 @@ class TestRunExecutor:
                     if r:
                         self._emit("test_completed", {
                             "test_case_id": tc["id"],
+                            "title":        tc.get("title") or "",
                             "status":       r["status"],
                             "actual":       r["actual"],
                             "comment":      r["comment"],

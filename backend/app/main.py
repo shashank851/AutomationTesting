@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.routers import auth_state, pages, results, runs, stream
+from app.routers import auth_session, auth_state, pages, results, runs, stream
 
 app = FastAPI(
     title="UI Test Platform",
@@ -17,6 +17,7 @@ app.include_router(runs.router)
 app.include_router(results.router)
 app.include_router(stream.router)
 app.include_router(auth_state.router)
+app.include_router(auth_session.router)
 
 # ── HTML page router (last — catch-all friendly) ──────────────────────────────
 app.include_router(pages.router)

@@ -19,12 +19,15 @@ celery_app.conf.update(
     enable_utc=True,
 
     # Task routing
-    task_routes={"app.workers.tasks.*": {"queue": "test_runs"}},
+    task_routes={
+        "app.workers.tasks.*":      {"queue": "test_runs"},
+        "app.workers.auth_tasks.*": {"queue": "test_runs"},
+    },
 
     # Hard timeout: kill worker if a task runs too long
     task_time_limit=settings.run_timeout_seconds + 60,
     task_soft_time_limit=settings.run_timeout_seconds,
-)
 
-# Auto-discover tasks in the workers package
-celery_app.autodiscover_tasks(["app.workers"])
+    # Explicitly register both task modules
+    include=["app.workers.tasks", "app.workers.auth_tasks"],
+)
