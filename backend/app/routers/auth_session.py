@@ -1,10 +1,9 @@
 """
-Auth-session endpoints — browser-based interactive login.
+Auth-session endpoints — headful browser via noVNC.
 
-POST   /api/v1/runs/{run_id}/auth-session          → launch headless browser task
-GET    /api/v1/runs/{run_id}/auth-session/stream   → SSE: screenshots + status events
-POST   /api/v1/runs/{run_id}/auth-session/interact → forward click/type/key to browser
-POST   /api/v1/runs/{run_id}/auth-session/complete → mark auth done, dispatch test run
+POST  /api/v1/runs/{run_id}/auth-session          → launch headful browser task
+GET   /api/v1/runs/{run_id}/auth-session/stream   → SSE: browser_ready / auth_complete / error
+POST  /api/v1/runs/{run_id}/auth-session/complete → capture auth state + dispatch test run
 """
 from __future__ import annotations
 
@@ -16,9 +15,7 @@ import uuid
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
 
 from app.config import settings
 from app.database import get_db
@@ -59,20 +56,17 @@ async def start_auth_session(run_id: uuid.UUID, db: AsyncSession = Depends(get_d
 
     auth_path = _auth_state_path(str(run_id))
 
-    # Dispatch Celery task — runs headless browser, streams screenshots
     task = run_auth_browser.apply_async(
         args=[str(run_id), run.target_url, auth_path],
         queue="test_runs",
     )
 
-    # Store the auth task id for reference (reuse celery_task_id field)
-    await run_service.set_celery_task_id(db, run_id, task.id)
-    await run_service.update_run_status(db, run_id, "pending_auth")
+    await run_service.set_celery_task_id(db, run, task.id)
 
     return {"status": "started", "task_id": task.id}
 
 
-# ── SSE stream: screenshots + auth events ─────────────────────────────────────
+# ── SSE: relay auth events (browser_ready, auth_complete, auth_timeout, auth_error) ──
 
 async def _auth_event_generator(run_id: str):
     client = aioredis.from_url(settings.redis_url, decode_responses=True)
@@ -91,8 +85,7 @@ async def _auth_event_generator(run_id: str):
             yield f"data: {raw}\n\n"
 
             try:
-                parsed = json.loads(raw)
-                et = parsed.get("event_type")
+                et = json.loads(raw).get("event_type")
                 if et in ("auth_complete", "auth_timeout", "auth_error"):
                     break
             except Exception:
@@ -118,44 +111,8 @@ async def stream_auth_session(run_id: uuid.UUID, db: AsyncSession = Depends(get_
     return StreamingResponse(
         _auth_event_generator(str(run_id)),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-# ── Interact: forward commands to browser ────────────────────────────────────
-
-class InteractPayload(BaseModel):
-    type: str                           # click | type | key | scroll | navigate
-    x: Optional[float] = None
-    y: Optional[float] = None
-    text: Optional[str] = None
-    key: Optional[str] = None
-    delta: Optional[float] = None
-    url: Optional[str] = None
-
-
-@router.post("/{run_id}/auth-session/interact")
-async def interact_auth_session(
-    run_id: uuid.UUID,
-    payload: InteractPayload,
-    db: AsyncSession = Depends(get_db),
-):
-    run = await run_service.get_run(db, run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found.")
-    if run.status != "pending_auth":
-        raise HTTPException(status_code=409, detail="No active auth session.")
-
-    client = aioredis.from_url(settings.redis_url, decode_responses=True)
-    try:
-        await client.publish(_cmd_channel(str(run_id)), payload.model_dump_json())
-    finally:
-        await client.aclose()
-
-    return {"ok": True}
 
 
 # ── Complete: save auth state + dispatch test run ─────────────────────────────
@@ -173,21 +130,18 @@ async def complete_auth_session(run_id: uuid.UUID, db: AsyncSession = Depends(ge
     # Tell the browser task to save the session and finish
     client = aioredis.from_url(settings.redis_url, decode_responses=True)
     try:
-        await client.publish(
-            _cmd_channel(str(run_id)),
-            json.dumps({"type": "complete"}),
-        )
+        await client.publish(_cmd_channel(str(run_id)), json.dumps({"type": "complete"}))
     finally:
         await client.aclose()
 
     # Save auth_state_path to DB and queue the test run
-    await run_service.set_auth_state_path(db, run_id, auth_path)
-    await run_service.update_run_status(db, run_id, "pending")
+    await run_service.set_auth_state_path(db, run, auth_path)
+    await run_service.update_run_status(db, run, "pending")
 
     task = execute_test_run.apply_async(
         args=[str(run_id)],
         queue="test_runs",
     )
-    await run_service.set_celery_task_id(db, run_id, task.id)
+    await run_service.set_celery_task_id(db, run, task.id)
 
     return {"status": "queued", "task_id": task.id}

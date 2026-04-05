@@ -42,6 +42,7 @@ services:
       - ./frontend:/app/frontend
       - uploads:/app/uploads
       - results:/app/results
+      - auth_states:/app/auth_states
     environment:
       DATABASE_URL: postgresql+asyncpg://uitest:${POSTGRES_PASSWORD:-changeme}@db:5432/uitestplatform
       SYNC_DATABASE_URL: postgresql+psycopg2://uitest:${POSTGRES_PASSWORD:-changeme}@db:5432/uitestplatform
@@ -62,10 +63,13 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2 -E -Q test_runs,celery
+    ports:
+      - "6080:6080"   # noVNC — headful auth browser exposed to host
     volumes:
       - ./backend:/app
       - uploads:/app/uploads
       - results:/app/results
+      - auth_states:/app/auth_states
     environment:
       # Worker uses sync psycopg2 driver (Playwright is sync, Celery is sync)
       SYNC_DATABASE_URL: postgresql+psycopg2://uitest:${POSTGRES_PASSWORD:-changeme}@db:5432/uitestplatform
@@ -100,3 +104,4 @@ volumes:
   redis_data:
   uploads:
   results:
+  auth_states:

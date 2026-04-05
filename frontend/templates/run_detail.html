@@ -25,82 +25,85 @@
   </div>
 
   <!-- Live auth browser panel -->
+  <!-- Live auth browser panel -->
   <template x-if="run.status === 'pending_auth'">
     <div class="bg-white border border-amber-200 rounded-xl shadow-sm mb-6 overflow-hidden">
 
-      <!-- Header -->
-      <div class="bg-amber-50 border-b border-amber-200 px-6 py-4 flex items-center justify-between">
+      <!-- Header row -->
+      <div class="bg-amber-50 border-b border-amber-200 px-6 py-5 flex items-center justify-between gap-4">
         <div class="flex items-center gap-3">
-          <div class="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 font-bold text-sm flex-shrink-0">!</div>
+          <div class="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 font-bold flex-shrink-0">!</div>
           <div>
             <p class="font-semibold text-amber-900">Authentication Required</p>
-            <p class="text-sm text-amber-700">Log in to the site below, then click <strong>I'm logged in — Done</strong>.</p>
+            <p class="text-sm text-amber-700 mt-0.5">
+              Click <strong>Open Login Browser</strong> — a browser window will open in a new tab.
+              Log in there, then come back here and click <strong>I'm logged in — Done</strong>.
+            </p>
           </div>
         </div>
-        <div class="flex items-center gap-3">
+
+        <!-- Action buttons -->
+        <div class="flex items-center gap-3 flex-shrink-0">
           <template x-if="!authBrowserStarted">
             <button @click="startAuthBrowser()"
                     :disabled="authBrowserLoading"
-                    class="bg-indigo-600 text-white text-sm font-medium rounded px-4 py-2 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                    class="bg-indigo-600 text-white text-sm font-semibold rounded-lg px-5 py-2.5 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm whitespace-nowrap">
               <span x-show="!authBrowserLoading">Open Login Browser</span>
-              <span x-show="authBrowserLoading">Starting…</span>
+              <span x-show="authBrowserLoading">Starting browser…</span>
             </button>
           </template>
-          <template x-if="authBrowserStarted">
-            <button @click="completeAuth()"
-                    :disabled="authCompleting"
-                    class="bg-green-600 text-white text-sm font-medium rounded px-4 py-2 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed">
-              <span x-show="!authCompleting">I'm logged in — Done</span>
-              <span x-show="authCompleting">Saving session…</span>
-            </button>
+          <template x-if="authBrowserStarted && !authCompleted">
+            <div class="flex items-center gap-3">
+              <button @click="reopenAuthTab()"
+                      class="border border-indigo-300 text-indigo-600 text-sm font-medium rounded-lg px-4 py-2 hover:bg-indigo-50 whitespace-nowrap">
+                Re-open tab
+              </button>
+              <button @click="completeAuth()"
+                      :disabled="authCompleting"
+                      class="bg-green-600 text-white text-sm font-semibold rounded-lg px-5 py-2.5 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm whitespace-nowrap">
+                <span x-show="!authCompleting">I'm logged in — Done</span>
+                <span x-show="authCompleting">Saving session…</span>
+              </button>
+            </div>
           </template>
         </div>
       </div>
 
-      <!-- Status / error bar -->
-      <div x-show="authStatusMsg" class="px-6 py-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-700" x-text="authStatusMsg"></div>
-      <div x-show="authError" class="px-6 py-2 bg-red-50 border-b border-red-100 text-xs text-red-700" x-text="authError"></div>
-
-      <!-- Browser viewport -->
-      <template x-if="authBrowserStarted">
-        <div class="relative select-none" style="cursor:crosshair">
-          <!-- Screenshot image — sized to match viewport (1280x800 scaled to container) -->
-          <img
-            id="auth-screenshot"
-            :src="authScreenshot ? 'data:image/jpeg;base64,' + authScreenshot : ''"
-            class="w-full block"
-            style="image-rendering:auto"
-            @click="handleAuthClick($event)"
-          />
-          <!-- Invisible overlay for interaction — keeps position relative to img -->
-          <div
-            class="absolute inset-0"
-            @click="handleAuthClick($event)"
-            @keydown.window="handleAuthKey($event)"
-          ></div>
-          <!-- URL bar -->
-          <div x-show="authCurrentUrl" class="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white text-xs px-3 py-1 truncate" x-text="authCurrentUrl"></div>
+      <!-- Steps (visible before browser opens) -->
+      <template x-if="!authBrowserStarted">
+        <div class="px-6 py-5 space-y-3">
+          <div class="flex items-start gap-3 text-sm text-gray-600">
+            <span class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
+            <span>Click <strong>Open Login Browser</strong> — a Chromium window will open in a new tab via noVNC.</span>
+          </div>
+          <div class="flex items-start gap-3 text-sm text-gray-600">
+            <span class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
+            <span>Log in normally in that browser tab (real keyboard &amp; mouse — no screenshots).</span>
+          </div>
+          <div class="flex items-start gap-3 text-sm text-gray-600">
+            <span class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
+            <span>Come back to this tab and click <strong>I'm logged in — Done</strong>. The session is saved automatically and the test run starts.</span>
+          </div>
         </div>
       </template>
 
-      <!-- Keyboard input strip (shown while browser is live) -->
-      <template x-if="authBrowserStarted">
-        <div class="px-4 py-3 border-t border-gray-100 flex gap-2 items-center">
-          <input
-            id="auth-type-input"
-            type="text"
-            placeholder="Type text and press Enter to send to browser…"
-            class="flex-1 text-sm border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-            @keydown.enter.prevent="sendAuthType($event.target.value); $event.target.value = ''"
-          />
-          <button
-            class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1.5"
-            @click="sendAuthKey('Tab')">Tab</button>
-          <button
-            class="text-xs bg-gray-100 hover:bg-gray-200 rounded px-3 py-1.5"
-            @click="sendAuthKey('Enter')">Enter</button>
+      <!-- Status while browser is open -->
+      <template x-if="authBrowserStarted && !authCompleted">
+        <div class="px-6 py-4 flex items-center gap-3 bg-blue-50 border-t border-blue-100">
+          <!-- Animated pulse dot -->
+          <span class="relative flex h-3 w-3 flex-shrink-0">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+          </span>
+          <p class="text-sm text-blue-800">
+            Browser is open in a new tab —
+            <span x-text="authCurrentUrl ? 'currently at: ' + authCurrentUrl : 'navigating to login page…'"></span>
+          </p>
         </div>
       </template>
+
+      <!-- Error -->
+      <div x-show="authError" class="px-6 py-3 bg-red-50 border-t border-red-100 text-sm text-red-700" x-text="authError"></div>
 
     </div>
   </template>
@@ -202,12 +205,12 @@ function runDetail() {
     // ── Auth browser state ───────────────────────────────────────────────────
     authBrowserStarted:  false,
     authBrowserLoading:  false,
-    authScreenshot:      null,   // base64 JPEG
     authCurrentUrl:      '',
-    authStatusMsg:       '',
     authError:           '',
     authCompleting:      false,
+    authCompleted:       false,
     authEvtSource:       null,
+    authVncUrl:          null,   // set on browser_ready, used to (re-)open tab
 
     // ── Computed ─────────────────────────────────────────────────────────────
 
@@ -308,7 +311,6 @@ function runDetail() {
     async startAuthBrowser() {
       this.authBrowserLoading = true;
       this.authError = '';
-      this.authStatusMsg = '';
       try {
         const res = await fetch('/api/v1/runs/' + this.runId + '/auth-session', { method: 'POST' });
         if (!res.ok) {
@@ -316,8 +318,7 @@ function runDetail() {
           this.authError = d.detail || 'Could not start auth browser.';
           return;
         }
-        this.authBrowserStarted = true;
-        this.authStatusMsg = 'Browser starting… waiting for first screenshot.';
+        // Connect SSE to wait for browser_ready before opening the tab
         this.connectAuthSSE();
       } catch {
         this.authError = 'Network error starting auth browser.';
@@ -337,19 +338,17 @@ function runDetail() {
           const p   = msg.payload || {};
 
           if (et === 'browser_ready') {
-            this.authStatusMsg = 'Browser ready — log in, then click "I\'m logged in — Done".';
+            // Build noVNC URL — same host as the web app, port 6080
+            const vncBase = window.location.protocol + '//' + window.location.hostname + ':6080';
+            this.authVncUrl = vncBase + '/vnc.html?autoconnect=true&resize=scale&reconnect=true';
             this.authCurrentUrl = p.url || '';
-          } else if (et === 'screenshot') {
-            this.authScreenshot = p.image;
-            this.authCurrentUrl = p.url || this.authCurrentUrl;
-            if (this.authStatusMsg.startsWith('Browser starting')) {
-              this.authStatusMsg = 'Browser live — interact below, then click Done when logged in.';
-            }
+            this.authBrowserStarted = true;
+            // Open the noVNC tab
+            window.open(this.authVncUrl, 'auth_browser_' + this.runId);
           } else if (et === 'auth_complete') {
-            this.authStatusMsg = 'Login saved! Queuing test run…';
             this.authEvtSource.close();
           } else if (et === 'auth_timeout') {
-            this.authError = 'Session timed out after 5 minutes. Reload to try again.';
+            this.authError = 'Session timed out after 10 minutes. Reload to try again.';
             this.authEvtSource.close();
           } else if (et === 'auth_error') {
             this.authError = p.message || 'Auth browser error.';
@@ -361,58 +360,16 @@ function runDetail() {
       };
 
       this.authEvtSource.onerror = () => {
-        // Don't show error if we completed normally
-        if (!this.authStatusMsg.includes('Queuing')) {
-          this.authError = 'Auth stream disconnected.';
+        if (!this.authCompleted) {
+          this.authError = 'Auth stream disconnected. Refresh the page to retry.';
         }
         this.authEvtSource.close();
       };
     },
 
-    // Click on the screenshot → scale coordinates to 1280x800 and send to backend
-    async handleAuthClick(event) {
-      const img = document.getElementById('auth-screenshot');
-      if (!img) return;
-      const rect = img.getBoundingClientRect();
-      const scaleX = 1280 / rect.width;
-      const scaleY = 800  / rect.height;
-      const x = (event.clientX - rect.left) * scaleX;
-      const y = (event.clientY - rect.top)  * scaleY;
-      await this._authInteract({ type: 'click', x, y });
-    },
-
-    // Key events from the global keydown listener on the overlay
-    async handleAuthKey(event) {
-      // Only forward when focus is NOT on the text input strip
-      const active = document.activeElement;
-      if (active && active.id === 'auth-type-input') return;
-
-      const special = ['Enter','Tab','Backspace','Delete','Escape',
-                       'ArrowUp','ArrowDown','ArrowLeft','ArrowRight'];
-      if (special.includes(event.key)) {
-        event.preventDefault();
-        await this._authInteract({ type: 'key', key: event.key });
-      }
-    },
-
-    async sendAuthType(text) {
-      if (!text) return;
-      await this._authInteract({ type: 'type', text });
-    },
-
-    async sendAuthKey(key) {
-      await this._authInteract({ type: 'key', key });
-    },
-
-    async _authInteract(payload) {
-      try {
-        await fetch('/api/v1/runs/' + this.runId + '/auth-session/interact', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } catch {
-        // ignore transient errors
+    reopenAuthTab() {
+      if (this.authVncUrl) {
+        window.open(this.authVncUrl, 'auth_browser_' + this.runId);
       }
     },
 
@@ -428,6 +385,8 @@ function runDetail() {
           this.authError = d.detail || 'Failed to complete auth.';
           return;
         }
+        this.authCompleted = true;
+        if (this.authEvtSource) this.authEvtSource.close();
         // Run is now queued — connect the normal SSE to track progress
         await this.loadRunData();
         this.connectSSE();
